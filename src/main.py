@@ -8,6 +8,7 @@ CWD = Path.cwd()
 DATA_DIR: Path = CWD / "data"
 SURVEY_PATH: Path = DATA_DIR / "survey"
 PICKLE_PATH: Path = DATA_DIR / "columnnames.pickle"
+SURVEY_CSV_PATH: Path = SURVEY_PATH / "[clean]survey_combined.csv"
 
 # TODO
 # Key questions:
@@ -25,7 +26,9 @@ def attempt_read_file(path: Path) -> pl.DataFrame:
 
 
 def encode_columns(df: pl.DataFrame, separator: str = ";") -> pl.DataFrame:
-    def transform_column(df: pl.DataFrame, col: pl.Expr, col_name: str) -> pl.DataFrame:
+    def transform_column(
+            df: pl.DataFrame, col: pl.Expr, col_name: str
+    ) -> pl.DataFrame:
         # Split the column by separator
         unique_values = df.select(
             col
@@ -78,8 +81,10 @@ def clean_df(df: pl.DataFrame) -> Tuple[pl.DataFrame]:
     # Read in list of columns to keep and filter out all others
     with open(PICKLE_PATH, "rb") as f:
         data_eng_skills = pickle.load(f)
+    # Filter out skills which are either broken or not relevant
     data_eng_skills = [x for x in data_eng_skills if x not in [
-        "JobSat", "EmbeddedHaveWorkedWith"]]
+        'JobSat', 'EmbeddedHaveWorkedWith'
+        ]]
     df = df.select(data_eng_skills)
     # Split out labels and get skills into individual columns
     label_columns = ["ConvertedCompYearly"]
@@ -115,10 +120,16 @@ def main():
     combined_columns = get_column_intersection(all_dataframes)
     all_dataframes = [df.select(combined_columns) for df in all_dataframes]
     combined_df = pl.concat(all_dataframes)
-    print(combined_df)
     combined_labels = pl.concat(all_labels)
-    print(pl.concat([combined_df, combined_labels], how="horizontal"))
-
+    combined_df = pl.concat([combined_df, combined_labels], how="horizontal")
+    combined_df = combined_df.drop_nans(subset="ConvertedCompYearly")
+    # Drop columns which contain nulls
+    combined_df = combined_df.drop([
+        'OpSysProfessional use_Windows Subsystem for Linux (WSL)',
+        'OpSysProfessional use_NA', 'OpSysProfessional use_None',
+        'OpSysProfessional use_Windows'
+    ])
+    combined_df.write_csv(SURVEY_CSV_PATH)
 
 
 if __name__ == "__main__":
